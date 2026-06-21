@@ -90,6 +90,51 @@ table-lookup fix held the glider at `5`. Caveats:
 - Can't easily run the full app if it busy-waits for input (e.g. a keypress-seed
   loop blows the cycle budget) — factor the logic into a harness instead.
 
+**ticks also PROFILES.** On exit it prints the **total Z80 cycles** executed (the
+big number — it's a count, not just an error). Wrap a fixed amount of work in a
+harness, read the cycles, and compare implementations directly. Divide by the
+PCW clock for wall-time: **4 MHz stock, 8 MHz overclocked** (so 8e6 cyc/s).
+That's how the Life speedup was measured (2026-06-21): old `compute_next`
+≥10M cyc/gen (~1.25 s @ 8 MHz — it couldn't finish 10 gens inside ticks' run
+budget), optimized ~1.7M cyc/gen (~0.2 s). If a program "feels slow," profile a
+harness before guessing — the cost is almost never where you'd expect.
+
+## Performance: sccz80 is a NAIVE codegen — hand-optimize hot loops
+
+sccz80 does almost no optimization, so idiomatic C can be 5-10x slower than it
+needs to be. For compute-heavy code (grids, inner loops), these gave a measured
+~6x on Life and apply generally:
+
+- **2D array access `a[i][j]` recomputes `i*WIDTH` (a multiply) on EVERY access.**
+  This dominated Life's cost. Hoist the row once per outer iteration into a
+  `char *row = a[i];` pointer, then index `row[j]` (a cheap pointer+offset). For
+  neighbour/stencil code, keep `up`/`mid`/`dn` row pointers.
+- **Precompute index/wrap tables** instead of per-cell branches or `%`. Toroidal
+  column wrap became `lfc[c]`/`rtc[c]` lookups filled once at startup.
+- **Bulk-copy with `memcpy`, not a nested assignment loop.** `memcpy` lowers to
+  Z80 `LDIR`; the double-buffer swap went from ~0.9M cyc/gen (2D-indexed copy) to
+  essentially free. `#include <string.h>`.
+- **Fold cheap bookkeeping into the main loop.** Accumulating the live-cell count
+  inside `compute_next` removed a whole separate 546-cell scan per frame.
+- **Don't pay for debug every frame in the shipped build.** A position-weighted
+  `long` checksum per live cell was fine for diagnosis but pure overhead once
+  working — gate it behind the `LIFE_DEBUG` define.
+- 16-bit `int` loop counters and pointers are fine; it's the implicit multiplies
+  and redundant scans that hurt. Profile under ticks (above) to confirm each win.
+
+## Debugging on real hardware without trusting screenshots
+
+The Remote-API screenshot is 266x200 and can catch a black/mid-boot frame, so it
+is NOT reliable ground truth (see CLAUDE.md). Two cheap techniques that paid off:
+- **On-screen counters:** print a `LIVE:`/`CHK:` style summary in the status line
+  every frame. If the visible state looks frozen but the numbers change, it's a
+  *render* bug; if the numbers freeze, it's a *logic* bug. Narrows it in one shot.
+- **Write a log file, then `TYPE` it.** `fopen`/`fprintf` work from a generic
+  `.COM` (CP/M Plus BDOS). A `LIFE_DEBUG` build can log per-generation values to
+  `LIFE.LOG`, `fclose`, and exit to a prompt; `TYPE LIFE.LOG` on the PCW shows the
+  whole history in one photo — far better than a single live screenshot. Use CRLF
+  (`\r\n`) so `TYPE` formats it. Compare against a host reference sequence.
+
 ## Compilers & options
 
 - `sccz80` is the default but is NOT fully trustworthy (see the boolean/`continue`

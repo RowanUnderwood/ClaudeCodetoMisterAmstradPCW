@@ -86,6 +86,14 @@ The `.c → .COM` path reuses everything from the working disk onward (transport
 - **Run `A:PROG`** via `ensure_profile(run_line=config.COM_RUN_CMD)` (same
   `setdef m:` reason as `BASIC A:PROG`). Inject fixed name `PROG.COM`.
 - **z88dk `int` is 16-bit** — use `long`/`%ld` past 32767.
+- **The default compiler (`sccz80`) SILENTLY MISCOMPILES some C** (wrong answer,
+  no crash): `a==X || a==Y` as an if/ternary condition comes out *inverted*, and
+  `continue` in nested loops jumps wrong. Cost a long debug on life.c. Prefer
+  lookup tables / range checks and avoid `continue`. It's also a naive codegen —
+  hot loops need hand-optimizing (hoist row pointers out of `a[i][j]`, precompute
+  index tables, `memcpy` for bulk copies). Both fully covered in the **`z88dk-pcw`
+  skill**, along with **`z88dk-ticks`** (local CP/M emulator) for correctness
+  *and* cycle-profiling without a hardware round-trip. Read it before writing C.
 - **Console**: BDOS; `\n`→CRLF; `ESC E`/`ESC H`/`ESC Y r+32 c+32` work from C
   (same VT52 firmware as Mallard). Verified clear + cursor positioning.
 - **Compiled is fast** — the BASIC "capture lands mid-run" pain is gone; the
