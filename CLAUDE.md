@@ -155,6 +155,16 @@ The `.c → .COM` path reuses everything from the working disk onward (transport
   `cpmtools/bin/diskdefs` to LF.
 - **Screenshots are low-res (266x200)** from the Remote API -- 90-col PCW text
   is rough to read; no resolution knob found. Keep test output short/distinct.
+- **Do NOT debug from the screenshot alone.** The capture is low-res AND timing
+  is unreliable -- a single auto-shot can land on a black screen or partway
+  through the ~40s boot, so an "empty"/garbled shot tells you nothing about
+  whether the program actually worked. Never conclude a run failed (or passed)
+  from one screenshot. Instead, after that first capture, **PAUSE and ask the
+  user to confirm what the screen actually shows** and to supply any extra
+  detail manually (re-read the live screen, retype output, describe the boot
+  state, take a follow-up `python pcwdev.py shot`, etc.) before you continue
+  troubleshooting. Treat the screenshot as a hint to corroborate with the user,
+  not as ground truth.
 - **Disk free space is tight (~84-86K on A:).** The 720K boot disk is mostly
   full of system files; `fsck.cpm` reports 43/357 free blocks (~86K) and CP/M
   `SHOW A:` ~84K. `config.MAX_PROG_BYTES` (80K) caps injected `.bas`, and

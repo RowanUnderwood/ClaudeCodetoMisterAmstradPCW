@@ -220,9 +220,17 @@ def cmd_runc(args):
 
     print(f"[1] Compiling {src} -> {config.COM_NAME} (z88dk {args.compiler}) ...")
     com_path = os.path.join(config.HERE, config.COM_NAME)
+
+    # Auto-seed randomness -- mirror cmd_run's {{SEED}} substitution for .bas.
+    defines = list(args.define or [])
+    if not any(d.startswith("PCW_SEED") or d.startswith("PCW_SEED=") for d in defines):
+        seed = random.randint(1, 32767)
+        defines.append(f"PCW_SEED={seed}")
+        print(f"    seeded RNG with PCW_SEED={seed}")
+
     try:
         com_path, size = ccom.compile_c(src, com_path, compiler=args.compiler,
-                                        defines=list(args.define or []))
+                                        defines=defines)
     except RuntimeError as e:
         sys.exit(f"ERROR: compile failed:\n{e}")
     print(f"    {config.COM_NAME}: {size} bytes (TPA ceiling {config.COM_TPA_BYTES})")
