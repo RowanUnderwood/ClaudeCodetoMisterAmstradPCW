@@ -75,3 +75,35 @@ MAX_PROG_BYTES = 80 * 1024     # reject .bas sources larger than this (~84K free
 SETTLE = 40        # seconds to wait after boot for PROFILE.SUB + BASIC A:PROG
 SHOT_WAIT = 4      # seconds between POST /api/screenshots and listing it
                    # (a fresh capture isn't always written within 2s)
+
+# --- z88dk / .COM cross-compilation ----------------------------------------
+# A second artifact kind: C/asm -> Z80 .COM, native machine code that loads at
+# 0x0100 and runs directly (much faster than Mallard; ceiling is the ~61K TPA,
+# not Mallard's ~31K workspace). The .COM is injected BINARY via diskimg.put_file
+# (never put_text -- LF->CRLF would corrupt machine code) and run as "A:PROG".
+#
+# Staged to a SPACE-FREE path: z88dk is fragile with spaces in its install /
+# ZCCCFG path, and this project lives under a path full of spaces. Z88DK_DIR and
+# ZCCCFG are persisted by install_z88dk.py (via setx) and read here; ccom.py
+# injects {Z88DK_DIR}\bin + ZCCCFG into the subprocess env (it never relies on a
+# global PATH), mirroring how diskimg pins cwd=CPMTOOLS_DIR.
+Z88DK_DIR = os.environ.get("Z88DK_DIR", r"C:\z88dk")   # staged toolchain root
+ZCCCFG = os.environ.get("ZCCCFG", os.path.join(Z88DK_DIR, "lib", "config"))
+# Official GitHub release zip (prebuilt win32). The nightly host
+# (nightly.z88dk.org) is often unreachable, so default to the stable release;
+# override with install_z88dk.py --url for a newer build.
+Z88DK_URL = "https://github.com/z88dk/z88dk/releases/download/v2.4/z88dk-win32-2.4.zip"
+
+ZCC_TARGET = "+cpm"
+# Use the GENERIC CP/M subtype ("default" => -Cz.com): a portable .COM that does
+# console I/O through the BDOS, which the PCW's CP/M Plus serves. The "pcw80"
+# subtype instead builds a PCW-native *disk image* (+cpmdisk) with the heavy
+# -lpcw banked runtime (REGISTER_SP=61000) -- that is NOT a drop-on-an-existing-
+# disk .COM and crashes when injected + run as A:PROG. Generic = correct here.
+ZCC_SUBTYPE = "default"        # plain .COM via BDOS (not the pcw80 disk build)
+ZCC_COMPILER = "sccz80"        # robust default; "sdcc" (zsdcc) = smaller/faster
+ZCC_FLAGS = ["-create-app"]    # appmake emits the .COM (add "-lm" only for floats)
+
+COM_NAME = "PROG.COM"          # fixed injected name -> stable PROFILE.SUB
+COM_RUN_CMD = "A:PROG"         # drive-qualified (default drive is M: via setdef)
+COM_TPA_BYTES = 61 * 1024      # runtime size ceiling (CP/M Plus TPA on the PCW)

@@ -186,6 +186,30 @@ def read_file(work, host_name, fmt=None):
                 pass
 
 
+def read_file_bin(work, host_name, fmt=None):
+    """Read a file back out of drive A: as raw bytes (for binaries like .COM).
+
+    Like read_file but binary -- never decodes. NOTE: CP/M stores files in
+    128-byte records, so a .COM read back is the original PADDED to a record
+    boundary; compare with roundtrip[:len(original)] == original, not equality.
+    """
+    cpmcp = _tool("cpmcp")
+    fmt = _fmt(fmt)
+    tmpdir = tempfile.mkdtemp()
+    dest = os.path.join(tmpdir, "out.bin")
+    try:
+        _check([cpmcp, "-f", fmt, "-T", config.CPM_TYPE, work,
+                f"0:{host_name}", dest], f"cpmcp read {host_name}")
+        with open(dest, "rb") as fh:
+            return fh.read()
+    finally:
+        for path in (dest, tmpdir):
+            try:
+                os.unlink(path) if os.path.isfile(path) else os.rmdir(path)
+            except OSError:
+                pass
+
+
 def has_file(work, host_name, fmt=None):
     """True if host_name exists on the image (case-insensitive)."""
     try:

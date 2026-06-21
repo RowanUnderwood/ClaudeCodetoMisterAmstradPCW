@@ -60,6 +60,9 @@ the same network as your PC and reachable at the IP you'll put in `HOST`.
   (see step 3). The boot image is a CPCEMU `.DSK` container, so libdsk (`-T dsk`)
   is mandatory; prebuilt Windows cpmtools (without libdsk) will *not* work.
 - **tesseract** (optional) — OCR of screenshots. If absent the PNG is still saved.
+- **z88dk** (optional) — only for the C → `.COM` path; installed by
+  `install_z88dk.py` (see "Cross-compiling C to a `.COM`" below). Not needed for
+  the Mallard BASIC workflow.
 
 ### 2. Configure `config.py` for your machine
 
@@ -137,14 +140,18 @@ follow-up `python pcwdev.py shot`.
 |------|---------|
 | `config.py` | **All settings**: host, creds, paths, RBF, CP/M format, timing, size limits. Edit here. |
 | `install_cpmtools.py` + `build_cpmtools.sh` | One-shot installer: builds libdsk+cpmtools and wires up `CPMTOOLS_DIR`. |
-| `diskimg.py` | cpmtools wrappers — working disk, inject/read files, `PROFILE.SUB`, format + free-space detection. |
+| `install_z88dk.py` | Pure-Python installer for the z88dk C cross-compiler (the `.COM` path); wires up `Z88DK_DIR`/`ZCCCFG`. |
+| `ccom.py` | z88dk compile wrapper (`compile_c`) — builds a generic CP/M `.COM`, size-checks it. |
+| `diskimg.py` | cpmtools wrappers — working disk, inject/read files (text + binary), `PROFILE.SUB`, format + free-space detection. |
 | `device.py` | SSH/SCP transport (PuTTY) + Remote HTTP API: backup, `.mgl`, launch, status. |
 | `feedback.py` | Take/fetch screenshots; optional tesseract OCR. |
 | `keyboard.py` | Keystroke fallback (used only if `SUBMIT.COM` is absent for auto-run). |
-| `pcwdev.py` | CLI front end: `preflight`, `run`, `launch`, `shot`. |
+| `pcwdev.py` | CLI front end: `preflight`, `run` (.bas), `cc`/`runc` (.c→.COM), `launch`, `shot`. |
 | `rerun_mister_test.py` | Standalone smoke test (writes `DEV.mgl` + launches the master). |
 | `.claude/skills/mallard-basic/` | Mallard BASIC dialect reference skill (keywords, gotchas like "no `CLS`"). |
-| `hello.bas`, `feature.bas`, `life.bas` | Example programs (basic, language features, Conway's Life). |
+| `.claude/skills/z88dk-pcw/` | C-for-PCW (z88dk) dialect/gotchas skill for the `.COM` path. |
+| `hello.bas`, `feature.bas`, `life.bas` | Mallard BASIC examples (basic, features, Conway's Life). |
+| `hello.c`, `feature.c` | C examples for the `.COM` path (smoke test, compute/console demo). |
 | `master_backup.dsk` | Off-device backup of the read-only boot disk (created by preflight). |
 | `screenshots/` | Captured PNGs. |
 
@@ -174,11 +181,40 @@ consult the **`mallard-basic` skill** (`.claude/skills/mallard-basic/SKILL.md`)
 for the real keyword set and dialect rules. `feature.bas` and `life.bas` are
 working examples.
 
+## Cross-compiling C to a `.COM` (z88dk)
+
+As well as Mallard BASIC, you can write **C** and cross-compile it to a native
+Z80 CP/M `.COM` — much faster than the interpreter, with a ~61K runtime ceiling
+instead of Mallard's ~31K. It reuses the same inject → boot → screenshot loop.
+
+```bash
+# one-time: install the z88dk toolchain (prebuilt; pure-Python download/extract)
+python install_z88dk.py            # stages to C:\z88dk, persists Z88DK_DIR/ZCCCFG
+python install_z88dk.py --check    # re-verify an existing install
+
+# compile only (fast, no device):
+python pcwdev.py cc hello.c        # -> PROG.COM (+ size)
+
+# full loop: compile -> inject (binary) -> boot -> run A:PROG -> screenshot
+python pcwdev.py runc hello.c --settle 50
+python pcwdev.py runc feature.c --compiler sdcc   # smaller/faster codegen
+```
+
+Open a **new shell** after install so `Z88DK_DIR`/`ZCCCFG` are visible. `hello.c`
+and `feature.c` are working examples. Before writing C, see the **`z88dk-pcw`
+skill** (`.claude/skills/z88dk-pcw/SKILL.md`) — the toolchain has sharp edges
+(use the generic CP/M subtype not `pcw80`; `int` is 16-bit; console is BDOS with
+VT52 escapes). The `.COM` is injected **binary** (never the BASIC CRLF path).
+
 ## Status
 
-Verified working end to end against a live MiSTer: cpmtools build → inject (CRLF)
-→ cold-boot → `PROFILE.SUB` auto-runs `BASIC A:PROG` → screenshot. `hello.bas`,
-`feature.bas`, and `life.bas` (Conway's Life) all run on hardware.
+Verified working end to end against a live MiSTer:
+
+- **BASIC:** cpmtools build → inject (CRLF) → cold-boot → `PROFILE.SUB` auto-runs
+  `BASIC A:PROG` → screenshot. `hello.bas`, `feature.bas`, `life.bas` (Conway's
+  Life) all run on hardware.
+- **C → .COM:** z88dk install → `cc`/`runc` → inject (binary) → `A:PROG` →
+  screenshot. `hello.c` and `feature.c` run on hardware.
 
 ## Notes / gotchas (full list in `CLAUDE.md`)
 

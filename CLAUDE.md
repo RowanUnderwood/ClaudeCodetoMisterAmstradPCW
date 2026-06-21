@@ -50,7 +50,11 @@ API, auto-run it, and read the result back as a screenshot.
   `read_screen()` (tesseract OCR, optional).
 - `keyboard.py` — ASCII→uinput keystroke fallback. Letters/digits/space are safe;
   PCW punctuation mapping is UNVERIFIED (verify `:` before trusting `BASIC B:PROG`).
-- `pcwdev.py` — CLI: `preflight`, `run`, `launch`, `shot`.
+- `pcwdev.py` — CLI: `preflight`, `run` (.bas), `cc`/`runc` (.c→.COM), `launch`,
+  `shot`. `_deploy_and_capture()` is the shared upload→mgl→cold-boot→shot tail.
+- `ccom.py` — z88dk compile wrapper: `compile_c()` builds a generic CP/M `.COM`,
+  injects `Z88DK_DIR\bin`+`ZCCCFG` into the subprocess env (never global PATH),
+  builds in a space-free temp dir, size-checks vs `COM_TPA_BYTES`.
 - `rerun_mister_test.py` — standalone smoke test (writes `DEV.mgl`, launches the
   master disk). Good for confirming transport+launch in isolation.
 - `install_cpmtools.py` + `build_cpmtools.sh` — one-shot installer for the
@@ -60,6 +64,36 @@ API, auto-run it, and read the result back as a screenshot.
   master's format. `python install_cpmtools.py` to install; `--check` to
   re-verify. Built as MSYS *subsystem* (not ucrt64 native) so the relocated exe
   resolves its compiled-in `diskdefs` path via the bundled `msys-2.0.dll` root.
+- `install_z88dk.py` — pure-Python installer for the z88dk Z80 C cross-compiler
+  (prebuilt zip, no compile). Downloads + extracts to a SPACE-FREE dir
+  (`C:\z88dk`), persists `Z88DK_DIR`/`ZCCCFG` via `setx`, verifies with a test
+  compile. `--check` re-verifies; `--url` overrides (defaults to the GitHub v2.4
+  release zip -- nightly.z88dk.org is often down).
+
+## .COM cross-compilation notes (z88dk, verified 2026-06-21)
+
+The `.c → .COM` path reuses everything from the working disk onward (transport,
+`.mgl`, cold-boot, `shot()` unchanged). What was learned getting it working:
+
+- **Generic subtype, NOT pcw80.** `config.ZCC_SUBTYPE="default"` builds a plain
+  `.COM` (BDOS console). `pcw80` builds a PCW disk image with a banked `-lpcw`
+  runtime + hardcoded `SP=0xEE48`; a bare `.COM` from it crashes on CP/M Plus
+  (stack above real TPA). The generic crt0 sets `SP` from the BDOS ptr at
+  `0x0006` — correct on CP/M Plus.
+- **Inject BINARY** (`diskimg.put_file`), never `put_text` — inverse of the
+  `.bas` rule. `runc` does this; `diskimg.read_file_bin()` round-trips bytes
+  (CP/M Plus tracks exact length, so no padding surprise here).
+- **Run `A:PROG`** via `ensure_profile(run_line=config.COM_RUN_CMD)` (same
+  `setdef m:` reason as `BASIC A:PROG`). Inject fixed name `PROG.COM`.
+- **z88dk `int` is 16-bit** — use `long`/`%ld` past 32767.
+- **Console**: BDOS; `\n`→CRLF; `ESC E`/`ESC H`/`ESC Y r+32 c+32` work from C
+  (same VT52 firmware as Mallard). Verified clear + cursor positioning.
+- **Compiled is fast** — the BASIC "capture lands mid-run" pain is gone; the
+  ~40s boot still dominates, so `runc --settle ~50` then read, or follow-up
+  `shot`. TPA ceiling ~61K (vs Mallard ~31K); disk ~84K still applies.
+- z88dk is fragile with spaces in its path -> staged to `C:\z88dk`, never under
+  the spaced project dir. `Z88DK_DIR`/`ZCCCFG` need a new shell (or set in the
+  session) just like `CPMTOOLS_DIR`. See the **`z88dk-pcw` skill** before writing C.
 
 ## Verified working (against the live device)
 

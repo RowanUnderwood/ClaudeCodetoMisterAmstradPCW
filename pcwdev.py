@@ -18,6 +18,7 @@ import os
 import random
 import sys
 
+import ccom
 import config
 import device
 import diskimg
@@ -95,6 +96,41 @@ def cmd_preflight(args):
     return 0 if ok else 1
 
 
+def _capture():
+    """Take + fetch a screenshot and report (shared by run/runc/shot)."""
+    print("[boot] capturing screenshot ...")
+    png = feedback.shot()
+    if png:
+        print(f"    saved: {png}")
+        text = feedback.read_screen(png)
+        if text:
+            print("    --- OCR ---")
+            print("    " + text.replace("\n", "\n    "))
+        else:
+            print("    (OCR unavailable; open the PNG to read the screen)")
+    else:
+        print("    WARN: no screenshot retrieved")
+    return png
+
+
+def _deploy_and_capture(work, settle, after_boot=None):
+    """Shared tail for both artifact kinds: upload -> mgl -> cold-boot -> shot.
+
+    `after_boot` (optional) runs once the core is up + settled, before the shot
+    (used by the .bas keystroke fallback). Identical for .bas and .COM.
+    """
+    print("[boot] uploading working disk to device ...")
+    device.upload(work, config.WORK)
+    print("[boot] ensuring DEV.mgl exists ...")
+    device.write_mgl()
+    print("[boot] cold booting PCW core ...")
+    device.cold_boot()
+    device.wait_until_running(settle=settle)
+    if after_boot:
+        after_boot()
+    return _capture()
+
+
 def cmd_run(args):
     src = args.prog
     if not os.path.exists(src):
@@ -146,37 +182,77 @@ def cmd_run(args):
         if not autorun:
             print("    SUBMIT.COM absent -> falling back to keystrokes")
 
-    print("[4] Uploading working disk to device ...")
-    device.upload(work, config.WORK)
-
-    print("[5] Ensuring DEV.mgl exists ...")
-    device.write_mgl()
-
-    print("[6] Cold booting PCW core ...")
-    device.cold_boot()
-    device.wait_until_running(settle=args.settle)
-
+    after = None
     if not autorun:
-        print("[7] Sending run command via keystrokes ...")
-        import keyboard
-        drive = "B:" if args.drive_b else ""
-        keyboard.run_basic(prog="PROG", drive=drive)
-        import time
-        time.sleep(args.settle)
+        def after():
+            print("[boot] sending run command via keystrokes ...")
+            import keyboard
+            import time
+            drive = "B:" if args.drive_b else ""
+            keyboard.run_basic(prog="PROG", drive=drive)
+            time.sleep(args.settle)
 
-    print("[8] Capturing screenshot ...")
-    png = feedback.shot()
-    if png:
-        print(f"    saved: {png}")
-        text = feedback.read_screen(png)
-        if text:
-            print("    --- OCR ---")
-            print("    " + text.replace("\n", "\n    "))
-        else:
-            print("    (OCR unavailable; open the PNG to read the screen)")
-    else:
-        print("    WARN: no screenshot retrieved")
+    _deploy_and_capture(work, args.settle, after)
+    print("Done.")
+    return 0
 
+
+def cmd_cc(args):
+    """Compile a .c to a .COM locally (no device) -- fast iteration."""
+    src = args.prog
+    if not os.path.exists(src):
+        sys.exit(f"ERROR: source not found: {src}")
+    out = args.out or os.path.join(config.HERE, config.COM_NAME)
+    try:
+        com, size = ccom.compile_c(src, out, compiler=args.compiler,
+                                   defines=list(args.define or []))
+    except RuntimeError as e:
+        sys.exit(f"ERROR: compile failed:\n{e}")
+    print(f"compiled {com}: {size} bytes (TPA ceiling {config.COM_TPA_BYTES})")
+    return 0
+
+
+def cmd_runc(args):
+    """Compile a .c -> .COM, inject BINARY, boot, run as A:PROG, screenshot."""
+    src = args.prog
+    if not os.path.exists(src):
+        sys.exit(f"ERROR: source not found: {src}")
+
+    print(f"[1] Compiling {src} -> {config.COM_NAME} (z88dk {args.compiler}) ...")
+    com_path = os.path.join(config.HERE, config.COM_NAME)
+    try:
+        com_path, size = ccom.compile_c(src, com_path, compiler=args.compiler,
+                                        defines=list(args.define or []))
+    except RuntimeError as e:
+        sys.exit(f"ERROR: compile failed:\n{e}")
+    print(f"    {config.COM_NAME}: {size} bytes (TPA ceiling {config.COM_TPA_BYTES})")
+    if size > config.MAX_PROG_BYTES:
+        sys.exit(f"ERROR: {config.COM_NAME} ({size} B) over the {config.MAX_PROG_BYTES}-byte "
+                 "disk cap.")
+
+    print("[2] Building working disk from master ...")
+    if not os.path.exists(config.LOCAL_MASTER):
+        print("    no local master backup; fetching from device ...")
+        device.backup_master()
+    fmt = _resolve_format(config.LOCAL_MASTER)
+    work = diskimg.make_working_copy()
+    try:
+        free_b, _ = diskimg.free_space(work, fmt)
+        print(f"    disk free: {free_b // 1024}K; .COM is {size} bytes")
+        if size > free_b:
+            sys.exit(f"ERROR: {config.COM_NAME} ({size} B) does not fit {free_b} B free.")
+    except RuntimeError as e:
+        print(f"    (free-space check skipped: {e})")
+
+    # BINARY inject -- never put_text (LF->CRLF would corrupt machine code).
+    print(f"[3] Injecting {config.COM_NAME} (BINARY) ...")
+    diskimg.put_file(work, config.COM_NAME, com_path, fmt)
+
+    print(f"[4] Setting PROFILE.SUB to auto-run '{config.COM_RUN_CMD}' ...")
+    if not diskimg.ensure_profile(work, fmt, run_line=config.COM_RUN_CMD):
+        sys.exit("ERROR: SUBMIT.COM absent on disk; .COM auto-run needs it.")
+
+    _deploy_and_capture(work, args.settle)
     print("Done.")
     return 0
 
@@ -217,6 +293,25 @@ def main():
     sr.add_argument("--settle", type=int, default=config.SETTLE,
                     help="seconds to wait after boot/run")
     sr.set_defaults(func=cmd_run)
+
+    scc = sub.add_parser("cc", help="compile a .c to a .COM (no device)")
+    scc.add_argument("prog", help="path to a C source file")
+    scc.add_argument("--compiler", default=config.ZCC_COMPILER,
+                     help="z88dk compiler: sccz80 (default) or sdcc")
+    scc.add_argument("--out", help="output .COM path (default PROG.COM)")
+    scc.add_argument("--define", action="append",
+                     help="-D NAME[=VALUE] passed to zcc (repeatable)")
+    scc.set_defaults(func=cmd_cc)
+
+    sc = sub.add_parser("runc", help="compile a .c, inject, boot, run, screenshot")
+    sc.add_argument("prog", help="path to a C source file")
+    sc.add_argument("--compiler", default=config.ZCC_COMPILER,
+                    help="z88dk compiler: sccz80 (default) or sdcc")
+    sc.add_argument("--define", action="append",
+                    help="-D NAME[=VALUE] passed to zcc (repeatable)")
+    sc.add_argument("--settle", type=int, default=config.SETTLE,
+                    help="seconds to wait after boot before screenshot")
+    sc.set_defaults(func=cmd_runc)
 
     sl = sub.add_parser("launch", help="cold-boot DEV.mgl without rebuilding")
     sl.add_argument("--settle", type=int, default=config.SETTLE)
