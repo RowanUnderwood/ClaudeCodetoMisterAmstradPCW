@@ -150,6 +150,10 @@ fi
 # finds it no matter how the path was compiled in. STAGE_ROOT becomes the msys
 # runtime root (msys-2.0.dll sits in STAGE_ROOT/bin), so POSIX paths resolve
 # under it.
+# cpmtools' diskdefs parser is CRLF-intolerant -- a stray CR turns `os 2.2` into
+# `os 2.2\r` => "invalid OS type". Always stage it LF-only via tr, never cp.
+stage_diskdefs() { tr -d '\r' < "$DISKDEFS_SRC" > "$1"; }
+
 declare -A seen=()
 place() {
     local posix="$1" dir
@@ -158,7 +162,7 @@ place() {
     seen[$posix]=1
     dir="$STAGE_ROOT$(dirname "$posix")"
     mkdir -p "$dir"
-    cp -f "$DISKDEFS_SRC" "$dir/diskdefs"
+    stage_diskdefs "$dir/diskdefs"
 }
 
 # From the binary itself:
@@ -172,7 +176,7 @@ place "/usr/local/share/diskdefs"
 place "/usr/share/diskdefs"
 place "/etc/cpmtools/diskdefs"
 # And right beside the exes, in case a build looks next to argv[0]:
-cp -f "$DISKDEFS_SRC" "$STAGE_BIN/diskdefs"
+stage_diskdefs "$STAGE_BIN/diskdefs"
 
 say "Build complete. Staged to:"
 echo "   $STAGE_BIN"

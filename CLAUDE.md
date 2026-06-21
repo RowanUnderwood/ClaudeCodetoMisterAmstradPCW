@@ -106,8 +106,19 @@ API, auto-run it, and read the result back as a screenshot.
   double-width cells (`[]` live / `  ` dead) with `|` borders read far better
   than single `*`/`.`; size output to fit one 32-line screen so it doesn't
   scroll. (See life.bas / feature.bas as worked examples.)
-- **MiSTer SAM is installed**: it auto-launches random games if left idle (at
-  the menu or in a core) too long. Don't dawdle; capture and move on.
+- **MiSTer SAM (Super Attract Mode)** will hijack the core and launch a random
+  game if left running/idle too long — it interrupted a long Life run once. The
+  user has since DISABLED SAM on this device; if runs get hijacked again, check
+  SAM is still off. Either way, don't dawdle on long captures.
+- **`RANDOMIZE` with no argument PROMPTS** ("Random Number Seed ?") and would
+  hang the non-interactive run — always pass an argument. Cold boot is
+  deterministic (no clock/entropy on-device), so for per-run variety a program
+  uses the `{{SEED}}` token (e.g. `RANDOMIZE {{SEED}}`) and `pcwdev run`
+  substitutes a fresh random int at inject time. See life.bas.
+- **cpmtools `diskdefs` must be LF, not CRLF.** A CR turns `os 2.2` into
+  `os 2.2\r` -> "invalid OS type" and every cpmcp/cpmls call fails. The installer
+  now strips CR when staging (`build_cpmtools.sh`); if you hit it, normalise
+  `cpmtools/bin/diskdefs` to LF.
 - **Screenshots are low-res (266x200)** from the Remote API -- 90-col PCW text
   is rough to read; no resolution knob found. Keep test output short/distinct.
 - **Disk free space is tight (~84-86K on A:).** The 720K boot disk is mostly

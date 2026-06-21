@@ -29,6 +29,12 @@ any keyword you're unsure of.
 - **Run verb in this project is `BASIC A:PROG`** — drive-qualified, because
   PROFILE.SUB's `setdef m:,*` makes M: (RAM disk) the default drive. Mallard
   loads *and runs* the named program.
+- **`RANDOMIZE` with no argument PROMPTS** "Random Number Seed ?" and blocks for
+  input — in the (non-interactive) pcwdev loop that hangs forever. Always give an
+  argument: `RANDOMIZE n`. Cold boot is deterministic, so for genuine per-run
+  variety use the `{{SEED}}` token (`RANDOMIZE {{SEED}}`); pcwdev substitutes a
+  random integer at inject time. `RND` (no arg) returns 0<v<1, so `INT(RND*n)`
+  picks 0..n-1.
 - Comments: both `REM` and a trailing apostrophe `'` work.
 - `LET` is optional (`A=1` is fine). String concat is `+`. Relational/logical
   ops: `=`,`<>`,`<`,`>`,`<=`,`>=`, and `AND OR NOT XOR EQV IMP MOD`.

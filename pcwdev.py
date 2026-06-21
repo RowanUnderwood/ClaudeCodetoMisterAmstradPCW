@@ -15,6 +15,7 @@ Examples:
 
 import argparse
 import os
+import random
 import sys
 
 import config
@@ -127,7 +128,16 @@ def cmd_run(args):
     # the screen "staircases" and Mallard can't parse/run the program. put_text
     # normalizes any mix to CRLF; put_file (raw byte copy) would not.
     with open(src, "r", newline="") as fh:
-        diskimg.put_text(work, config.PROG_NAME, fh.read(), fmt)
+        text = fh.read()
+    # Inject entropy: the PCW cold-boots deterministically and Mallard's
+    # RANDOMIZE with no argument PROMPTS (which would hang), so a program that
+    # wants randomness puts the {{SEED}} token (e.g. `RANDOMIZE {{SEED}}`) and we
+    # substitute a fresh value here. No-op for programs without the token.
+    if "{{SEED}}" in text:
+        seed = random.randint(1, 32767)
+        text = text.replace("{{SEED}}", str(seed))
+        print(f"    seeded RNG with {seed}")
+    diskimg.put_text(work, config.PROG_NAME, text, fmt)
 
     autorun = not args.no_autorun
     if autorun:
