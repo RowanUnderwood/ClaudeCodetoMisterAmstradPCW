@@ -1,0 +1,42 @@
+10 REM --- Conway's Game of Life (Mallard BASIC) ---
+20 DEFINT A-Z
+30 H=5 : W=10 : NG=4
+40 DIM A(H,W),B(H,W)
+50 REM -- seed a glider (top-left) --
+60 A(0,1)=1 : A(1,2)=1 : A(2,0)=1 : A(2,1)=1 : A(2,2)=1
+70 ESC$=CHR$(27)
+80 PRINT ESC$;"E";ESC$;"H";
+90 FOR G=0 TO NG
+100 PRINT "GEN ";G
+110 FOR R=0 TO H-1
+120 RW$="|"
+130 FOR C=0 TO W-1
+140 IF A(R,C)=1 THEN RW$=RW$+"[]" ELSE RW$=RW$+"  "
+150 NEXT C
+160 PRINT RW$+"|"
+170 NEXT R
+180 REM -- next generation, toroidal wrap --
+190 FOR R=0 TO H-1
+200 FOR C=0 TO W-1
+210 N=-A(R,C)
+220 FOR DR=-1 TO 1
+230 RR=(R+DR+H) MOD H
+240 FOR DC=-1 TO 1
+250 CC=(C+DC+W) MOD W
+260 N=N+A(RR,CC)
+270 NEXT DC
+280 NEXT DR
+290 B(R,C)=0
+300 IF A(R,C)=1 AND (N=2 OR N=3) THEN B(R,C)=1
+310 IF A(R,C)=0 AND N=3 THEN B(R,C)=1
+320 NEXT C
+330 NEXT R
+340 REM -- copy next into current --
+350 FOR R=0 TO H-1
+360 FOR C=0 TO W-1
+370 A(R,C)=B(R,C)
+380 NEXT C
+390 NEXT R
+400 NEXT G
+410 PRINT "LIFE-DONE"
+420 END

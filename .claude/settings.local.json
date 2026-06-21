@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.cpm8680.com)",
+      "WebFetch(domain:formulae.brew.sh)",
+      "WebFetch(domain:packages.msys2.org)",
+      "WebFetch(domain:www.seasip.info)",
+      "WebFetch(domain:www.moria.de)",
+      "WebFetch(domain:manpages.debian.org)",
+      "PowerShell(python install_cpmtools.py)",
+      "PowerShell(Tee-Object *)",
+      "PowerShell($bin = \".\\\\cpmtools\\\\bin\\\\cpmls.exe\"; $img = \"$PWD\\\\master_backup.dsk\"; Write-Output \"cwd=$PWD\"; Write-Output \"=== cf2dd, windows path ===\"; & $bin -f cf2dd -T dsk $img 2>&1 | Select-Object -First 6; Write-Output \"exit=$LASTEXITCODE\")"
+    ]
+  }
+}
